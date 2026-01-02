@@ -48,8 +48,7 @@ src/main/generated/
 grafana/
 
 # prometheus
-prometheus/data/
-prometheus/dev/
+prometheus/
 
 # rabbitmq
 rabbitmq/

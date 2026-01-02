@@ -46,7 +46,7 @@ public class SecurityConfig { // 애플리케이션의 보안 정책을 정의
                                 "/api/expert/list", "/api/expert/{expert-id}",
                                 "/api/posts/popular/list/**", "/api/posts/all/list/**", "/api/posts/free/list/**","/api/posts/qna/list/**",
                                 "/api/posts/expertCol/list/**", "/api/posts/{postId}/comments",
-                                "/ws-stomp/**", "/test", "/**").permitAll()
+                                "/ws-stomp/**", "/test", "/actuator/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll() // Swagger 경로 허용
                         .anyRequest().authenticated()
                 )

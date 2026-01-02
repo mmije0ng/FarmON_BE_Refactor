@@ -1,3 +1,5 @@
+version: "3.9"
+
 services:
   redis:
     volumes:
@@ -10,7 +12,6 @@ services:
       - ./rabbitmq/data:/var/lib/rabbitmq
       - ./rabbitmq/log:/var/log/rabbitmq
       - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
-
   mysql:
     container_name: mysql-container
     image: mysql:8.0
@@ -39,9 +40,18 @@ services:
       - ./config/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
 
   prometheus:
+    container_name: prometheus-container
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    networks:
+      - app-network
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
 
   grafana:
     volumes:
@@ -50,3 +60,19 @@ services:
   nginx:
     volumes:
       - ./config/local/nginx.conf:/etc/nginx/nginx.conf:ro
+
+  # k6 (로컬에서 AWS 서버 부하 테스트)
+  k6:
+    container_name: k6
+    image: grafana/k6:latest
+    networks:
+      - app-network
+    depends_on:
+      - prometheus
+    environment:
+      K6_OUT: experimental-prometheus-rw
+      K6_PROMETHEUS_RW_SERVER_URL: http://prometheus-container:9090/api/v1/write
+      TARGET_BASE_URL: http://${TARGET_BASE_URL}:8080
+    volumes:
+      - ./k6:/scripts:ro
+    entrypoint: ["k6"]
