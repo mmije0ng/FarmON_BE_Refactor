@@ -1,49 +1,55 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 language: ko-KR
+
 reviews:
   profile: assertive
-  request_changes_workflow: true
-  high_level_summary_in_walkthrough: true
-  fail_commit_status: true
-  auto_apply_labels: true
-  auto_assign_reviewers: true
+
+  high_level_summary: true
+  high_level_summary_instructions: |
+    PR 변경 사항을 한국어로 간결하게 요약해 주세요.
+    성능, 구조, 안정성 관점의 핵심 변경점을 중심으로 설명해 주세요.
+
   path_instructions:
-    - path: '**/*'
+    - path: "**/*.java"
       instructions: |
-        다음 기준을 기반으로 Spring Boot 프로젝트 코드를 검토해 주세요.
+        아래 기준에 따라 Java 코드를 줄 단위로 상세히 리뷰해 주세요.
+        문제가 있는 코드 라인에는 직접 코멘트를 남겨 주세요.
 
         1. 예외 처리
-           - @ControllerAdvice / @ExceptionHandler를 통한 글로벌 예외 처리 여부
-           - RuntimeException의 과도한 사용 여부
-           - 에러 메시지 또는 로그에 민감 정보(비밀번호, 토큰 등)가 노출되지 않는지
+           - @ControllerAdvice / @ExceptionHandler 사용 여부
+           - RuntimeException 남용 여부
+           - 로그에 민감 정보 노출 여부
 
         2. 코드 품질 & 구조
-           - 단일 책임 원칙(SRP) 준수 여부
-           - 중복 코드 존재 여부
-           - DTO ↔ Entity 변환 구조가 계층 분리에 맞게 구현되어 있는지
-           - Service 계층이 과도하게 비대해지지 않았는지
+           - 단일 책임 원칙(SRP) 위반
+           - 중복 코드
+           - DTO ↔ Entity 변환 책임 위치
+           - Service 계층 비대화 여부
 
         3. Spring Web & REST API
-           - HTTP 상태코드 사용이 표준에 맞는지
-           - 컨트롤러에 비즈니스 로직이 존재하지 않는지
-           - Request/Response DTO 설계가 적절한지
+           - HTTP 상태 코드 적절성
+           - 컨트롤러 비즈니스 로직 포함 여부
 
         4. JPA & Query 성능
-           - 즉시 로딩(EAGER) 남용 여부
-           - N+1 문제 가능성 여부
-           - 불필요한 쿼리 발생 여부
-           - fetch join 또는 batch size 사용이 가능한 부분은 없는지
+           - EAGER 로딩 남용
+           - N+1 문제 가능성
+           - fetch join / batch size 개선 포인트
 
-        5. 트랜잭션 관리
-           - @Transactional 위치가 올바른지 (Service 계층 중심)
-           - readOnly = true 옵션이 조회성 트랜잭션에 적용되어 있는지
-           - 트랜잭션 범위가 지나치게 넓지는 않은지
+        5. 트랜잭션
+           - @Transactional 위치
+           - readOnly 적용 여부
+           - 트랜잭션 범위 적절성
 
         6. 보안
-           - 비밀번호/액세스 토큰/API Key 등 민감 정보가 로그로 출력되지 않는지
+           - 민감 정보 로그 출력 여부
            - @Valid / Bean Validation 사용 여부
-           - 인증/인가 우회 위험이 없는지
+           - 인증/인가 우회 가능성
 
-        위 모든 항목을 고려해, 코드 개선점과 구체적인 수정 방법을 제안해 주세요.
   auto_review:
+    enabled: true
     drafts: true
+
+  request_changes_workflow: true
+  auto_apply_labels: true
+  auto_assign_reviewers: true
+  fail_commit_status: true

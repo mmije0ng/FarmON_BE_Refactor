@@ -15,14 +15,12 @@ import com.backend.farmon.dto.post.PostPagingResponseDTO;
 import com.backend.farmon.dto.post.PostResponseDTO;
 import com.backend.farmon.dto.post.PostType;
 import com.backend.farmon.dto.post.PostWithAnswersResponseDTO;
-import com.backend.farmon.repository.AnswerRepository.AnswerRepository;
 import com.backend.farmon.repository.BoardRepository.BoardRepository;
-import com.backend.farmon.repository.CommentRepository.CommentRepository;
-import com.backend.farmon.repository.LikeCountRepository.LikeCountRepository;
 import com.backend.farmon.repository.PostRepository.PostRepository;
 import com.backend.farmon.service.AWS.S3Service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -48,6 +46,11 @@ public class PostQueryServiceImpl implements PostQueryService {
     // 홈 화면 카테고리에 따른 커뮤니티 게시글 3개씩 조회
     // 인기, 전체, QNA, 전문가 칼럼
     @Override
+    @Cacheable(
+            cacheNames = "home:community",
+            key = "'category:' + #category.name()",
+            unless = "#result == null"
+    )
     public HomeResponse.PostListDTO findHomePostsByCategory(PostType category) {
 
         List<HomePostRow> rows = switch (category) {
@@ -55,6 +58,8 @@ public class PostQueryServiceImpl implements PostQueryService {
             case POPULAR -> postRepository.findTopPostsByLikesWithCounts(POST_LIMIT);
             default -> postRepository.findTopPostsByPostTypeWithCounts(category, POST_LIMIT);
         };
+
+        log.info("[findHomePostsByCategory] DB query executed. category={}", category);
 
         return HomeConverter.toPostListDTO(rows);
     }
