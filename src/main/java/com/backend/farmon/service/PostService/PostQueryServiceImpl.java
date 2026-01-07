@@ -9,6 +9,7 @@ import com.backend.farmon.domain.*;
 import com.backend.farmon.domain.commons.TimeDifferenceUtil;
 import com.backend.farmon.dto.Answer.AnswerResponseDTO;
 import com.backend.farmon.dto.Comment.CommentResponseDTO;
+import com.backend.farmon.dto.home.HomePostRow;
 import com.backend.farmon.dto.home.HomeResponse;
 import com.backend.farmon.dto.post.PostPagingResponseDTO;
 import com.backend.farmon.dto.post.PostResponseDTO;
@@ -20,8 +21,6 @@ import com.backend.farmon.repository.CommentRepository.CommentRepository;
 import com.backend.farmon.repository.LikeCountRepository.LikeCountRepository;
 import com.backend.farmon.repository.PostRepository.PostRepository;
 import com.backend.farmon.service.AWS.S3Service;
-import com.backend.farmon.strategy.postType.PostFetchStrategy;
-import com.backend.farmon.strategy.postType.PostFetchStrategyFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -30,14 +29,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
-
-import static com.backend.farmon.dto.post.PostType.QNA;
-
 
 @Slf4j
 @RequiredArgsConstructor
@@ -45,14 +39,10 @@ import static com.backend.farmon.dto.post.PostType.QNA;
 @Service
 public class PostQueryServiceImpl implements PostQueryService {
 
-    private final PostFetchStrategyFactory strategyFactory;
     private final UserAuthorizationUtil userAuthorizationUtil;
-    private final CommentRepository commentRepository;
-    private final LikeCountRepository likeCountRepository;
     private final PostRepository postRepository;
     private final BoardRepository boardRepository;
     private final S3Service s3Service;
-    private final AnswerRepository answerRepository;
     private static final Integer POST_LIMIT=3;
 
     // 홈 화면 카테고리에 따른 커뮤니티 게시글 3개씩 조회
@@ -60,24 +50,13 @@ public class PostQueryServiceImpl implements PostQueryService {
     @Override
     public HomeResponse.PostListDTO findHomePostsByCategory(PostType category) {
 
-        // 카테고리별 게시글 조회
-        PostFetchStrategy strategy = strategyFactory.getStrategy(category);
-        List<Post> postList = strategy.fetchPosts(category, POST_LIMIT);
-        log.info("홈 화면 카테고리별 게시글 조회 성공");
+        List<HomePostRow> rows = switch (category) {
+            case ALL -> postRepository.findTopPostsWithCounts(POST_LIMIT);
+            case POPULAR -> postRepository.findTopPostsByLikesWithCounts(POST_LIMIT);
+            default -> postRepository.findTopPostsByPostTypeWithCounts(category, POST_LIMIT);
+        };
 
-        // 각 게시물의 좋아요 개수 조회
-        List<Integer> likeCountList = postList.stream()
-                .map(post -> likeCountRepository.countLikeCountsByPostId(post.getId()))
-                .toList();
-        log.info("홈 화면 카테고리별 게시글 좋아요 개수 조회 성공");
-
-        // 각 게시물의 댓글 개수 조회
-        List<Integer> commentCountList = postList.stream()
-                .map(post -> commentRepository.countCommentsByPostId(post.getId()))
-                .toList();
-        log.info("홈 화면 카테고리별 게시글 댓글 개수 조회 성공");
-
-        return HomeConverter.toPostListDTO(postList, likeCountList, commentCountList);
+        return HomeConverter.toPostListDTO(rows);
     }
 
     // 인기 전문가 칼럼 6개 조회

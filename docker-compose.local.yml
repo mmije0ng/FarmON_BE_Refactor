@@ -46,6 +46,7 @@ services:
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-remote-write-receiver"
 
   grafana:
     volumes:
@@ -64,9 +65,13 @@ services:
     depends_on:
       - prometheus
     environment:
-      K6_OUT: experimental-prometheus-rw
-      K6_PROMETHEUS_RW_SERVER_URL: http://prometheus-container:9090/api/v1/write
-      TARGET_BASE_URL: http://${TARGET_BASE_URL}:8080
+      # Prometheus Remote Write 설정
+      K6_OUT: "experimental-prometheus-rw"
+      K6_PROMETHEUS_RW_SERVER_URL: "http://prometheus-container:9090/api/v1/write"
+      K6_PROMETHEUS_RW_TREND_STATS: "p(90),p(95),p(99),avg,max"
+      # 테스트 스크립트에서 사용할 변수
+      TARGET_BASE_URL: "http://${TARGET_BASE_URL:-localhost}:8080"
     volumes:
+      # [호스트 경로] : [컨테이너 내부 경로]
       - ./k6:/scripts:ro
-    entrypoint: ["k6"]
+    entrypoint: [ "k6", "run" ]

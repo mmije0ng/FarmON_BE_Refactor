@@ -3,9 +3,11 @@ package com.backend.farmon.repository.PostRepository;
 import com.backend.farmon.apiPayload.code.status.ErrorStatus;
 import com.backend.farmon.apiPayload.exception.GeneralException;
 import com.backend.farmon.domain.*;
+import com.backend.farmon.dto.home.HomePostRow;
 import com.backend.farmon.dto.post.PostType;
 import com.backend.farmon.repository.BoardRepository.BoardRepository;
 import com.querydsl.core.BooleanBuilder;
+import com.querydsl.core.types.Projections;
 import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
@@ -26,84 +28,117 @@ import static com.backend.farmon.domain.QPostImg.postImg;
 public class PostRepositoryImpl implements PostRepositoryCustom {
     private final BoardRepository boardRepository;
     private final JPAQueryFactory queryFactory;
-    QLikeCount likeCount = QLikeCount.likeCount;
-    QPost post = QPost.post;
-    QBoard board = QBoard.board;
-    QCrop crop = QCrop.crop;
-    QBoardPost boardPost= QBoardPost.boardPost;
-    QPost originalPost = new QPost("originalPost");
+    private final QLikeCount likeCount = QLikeCount.likeCount;
+    private final QPost post = QPost.post;
+    private final QBoard board = QBoard.board;
+    private final QPost originalPost = new QPost("originalPost");
+    private final QComment comment = QComment.comment;
 
-    // 전체 게시글 3개 조회
+    private final QCrop crop = QCrop.crop;
+
+    /**
+     * 공통 select (원본 게시글 기준) + 좋아요/댓글 count를 한 번에 가져오기 위한 프로젝션
+     */
+    private com.querydsl.core.types.ConstructorExpression<HomePostRow> homePostRowProjection(QPost targetPost) {
+        return Projections.constructor(
+                HomePostRow.class,
+                targetPost.id,
+                targetPost.postTitle,
+                targetPost.postContent,
+                targetPost.board.postType.stringValue(), // enum name
+                targetPost.createdAt,
+                likeCount.id.countDistinct(),
+                comment.id.countDistinct()
+        );
+    }
+
+    // ALL: 전체 게시글 N개
     @Override
-    public List<Post> findTopPosts(Integer limit) {
-        return queryFactory.selectFrom(originalPost)
+    public List<HomePostRow> findTopPostsWithCounts(int limit) {
+        return queryFactory
+                .select(homePostRowProjection(originalPost))
+                .from(originalPost)
+                .join(originalPost.board, board)
+                .leftJoin(likeCount).on(likeCount.post.id.eq(originalPost.id))
+                .leftJoin(comment).on(comment.post.id.eq(originalPost.id))
                 .where(originalPost.id.in(
-                        JPAExpressions.select(post.originalPostId) // 현재 게시글의 원본 ID를 가져옴
+                        JPAExpressions.select(post.originalPostId)
                                 .from(post)
-                                .where(post.board.postType.eq(PostType.ALL)
-                                        .and(post.originalPostId.isNotNull())) // original_post_id가 있는 경우만 조회
+                                .where(
+                                        post.board.postType.eq(PostType.ALL),
+                                        post.originalPostId.isNotNull()
+                                )
                 ))
-                .orderBy(originalPost.createdAt.desc()) // 원본 게시글을 기준으로 정렬
+                .groupBy(
+                        originalPost.id,
+                        originalPost.postTitle,
+                        originalPost.postContent,
+                        originalPost.createdAt,
+                        originalPost.board.postType
+                )
+                .orderBy(originalPost.createdAt.desc()) // 기존과 동일: 최신순
                 .limit(limit)
                 .fetch();
     }
 
-    // 인기 게시글 3개 조회
+    // POPULAR: 인기 게시글 N개
     @Override
-    public List<Post> findTopPostsByLikes(Integer limit) {
-        QPost currentPost  = new QPost("currentPost");
+    public List<HomePostRow> findTopPostsByLikesWithCounts(int limit) {
+        QPost currentPost = new QPost("currentPost");
 
-        // 1) 정렬/집계는 여기서만: 상위 postId 목록 조회
-        List<Long> topIds = queryFactory
-                .select(originalPost.id)
+        return queryFactory
+                .select(homePostRowProjection(originalPost))
                 .from(originalPost)
-                .leftJoin(originalPost.postlikes, likeCount)
+                .join(originalPost.board, board)
+                .leftJoin(likeCount).on(likeCount.post.id.eq(originalPost.id))
+                .leftJoin(comment).on(comment.post.id.eq(originalPost.id))
                 .where(originalPost.id.in(
                         JPAExpressions.select(currentPost.originalPostId)
                                 .from(currentPost)
-                                .where(currentPost.board.postType.eq(PostType.POPULAR)
-                                        .and(currentPost.originalPostId.isNotNull()))
+                                .where(
+                                        currentPost.board.postType.eq(PostType.POPULAR),
+                                        currentPost.originalPostId.isNotNull()
+                                )
                 ))
-                .groupBy(originalPost.id)
-                .orderBy(likeCount.id.count().desc(), originalPost.createdAt.desc())
+                .groupBy(
+                        originalPost.id,
+                        originalPost.postTitle,
+                        originalPost.postContent,
+                        originalPost.createdAt,
+                        originalPost.board.postType
+                )
+                .orderBy(
+                        likeCount.id.countDistinct().desc(), // 기존과 동일: 좋아요 수 desc
+                        originalPost.createdAt.desc()
+                )
                 .limit(limit)
                 .fetch();
-
-        if (topIds.isEmpty()) return List.of();
-
-        // 2) 연관 컬렉션은 여기서 fetchJoin으로 한 번에 로딩 (N+1 방지)
-        List<Post> posts = queryFactory
-                .selectFrom(originalPost)
-                .distinct() // fetchJoin으로 중복 row가 생기므로 중복 제거
-                .leftJoin(originalPost.postlikes, likeCount).fetchJoin()
-                .where(originalPost.id.in(topIds))
-                .fetch();
-
-        // 3) IN 조회는 순서 보장이 없으니 topIds 순서대로 정렬 보정
-        Map<Long, Integer> order = new HashMap<>();
-        for (int i = 0; i < topIds.size(); i++) order.put(topIds.get(i), i);
-        posts.sort(Comparator.comparingInt(p -> order.get(p.getId())));
-
-        return posts;
     }
 
-    // 게시판 타입별로 조회 (전문가 칼럼, Q&A)
+    // 특정 타입(EXPERT_COLUMN, Q&A 등)
     @Override
-    public List<Post> findTopPostsByPostTYpe(PostType postType, Integer limit) {
-        return queryFactory.select(post)
+    public List<HomePostRow> findTopPostsByPostTypeWithCounts(PostType postType, int limit) {
+        return queryFactory
+                .select(homePostRowProjection(post))
                 .from(post)
-                .join(post.board, board).fetchJoin() // Post와 Board를 조인
-                .leftJoin(post.postlikes, likeCount) // Post와 LikeCount를 조인
-                .where(board.postType.eq(postType)) // PostType으로 필터링
-                .groupBy(post) // Post별로 그룹화
-                .orderBy(
-                        likeCount.count().desc(), // 좋아요 개수로 정렬
-                        post.createdAt.desc() // 최신순 정렬
+                .join(post.board, board)
+                .leftJoin(likeCount).on(likeCount.post.id.eq(post.id))
+                .leftJoin(comment).on(comment.post.id.eq(post.id))
+                .where(board.postType.eq(postType))
+                .groupBy(
+                        post.id,
+                        post.postTitle,
+                        post.postContent,
+                        post.createdAt,
+                        post.board.postType
                 )
-                .limit(limit) // 3개 제한
+                .orderBy(
+                        likeCount.id.countDistinct().desc(), // 요청하신 정렬 그대로
+                        post.createdAt.desc()
+                )
+                .limit(limit)
                 .fetch();
     }
-
 
     // 인기 전문가 칼럼 6개 조회
     @Override
@@ -244,7 +279,7 @@ public class PostRepositoryImpl implements PostRepositoryCustom {
 
         return new PageImpl<>(posts, pageable, total);
     }
-    
+
     // 검색어(제목,소제목)에따라 검색
     @Override
     public Page<Post> findPostsBySearchQuery(String searchQuery, Long boardId, Pageable pageable) {

@@ -4,34 +4,27 @@ import com.backend.farmon.domain.Expert;
 import com.backend.farmon.domain.Post;
 import com.backend.farmon.domain.PostImg;
 import com.backend.farmon.domain.User;
+import com.backend.farmon.dto.home.HomePostRow;
 import com.backend.farmon.dto.home.HomeResponse;
 
 import java.util.List;
 import java.util.Optional;
 
 public class HomeConverter {
-    public static HomeResponse.PostListDTO toPostListDTO(List<Post> postList, List<Integer> likeCountList, List<Integer> commentCountList) {
-        // 각 Post와 대응하는 likeCount와 commentCount를 매핑하여 DTO 리스트 생성
-        List<HomeResponse.PostDetailDTO> postDetailDTOList =
-                postList.stream()
-                        .map(post -> {
-                            int index = postList.indexOf(post);
-                            return toPostDetailDTO(post, likeCountList.get(index), commentCountList.get(index));
-                        })
-                        .toList();
+    public static HomeResponse.PostListDTO toPostListDTO(List<HomePostRow> rows) {
+        var list = rows.stream()
+                .map(r -> HomeResponse.PostDetailDTO.builder()
+                        .postId(r.postId())
+                        .postTitle(r.postTitle())
+                        .postContent(r.postContent())
+                        .postType(r.postType())
+                        .likeCount(r.likeCount().intValue())
+                        .commentCount(r.commentCount().intValue())
+                        .build()
+                )
+                .toList();
 
-        return new HomeResponse.PostListDTO(postDetailDTOList);
-    }
-
-    public static HomeResponse.PostDetailDTO toPostDetailDTO(Post post, Integer likeCount, Integer commentCount){
-        return HomeResponse.PostDetailDTO.builder()
-                .postId(post.getId())
-                .postTitle(post.getPostTitle())
-                .postContent(post.getPostContent())
-                .postType(post.getBoard().getPostType().getLabel())
-                .likeCount(likeCount)
-                .commentCount(commentCount)
-                .build();
+        return new HomeResponse.PostListDTO(list);
     }
 
     public static HomeResponse.PopularPostListDTO toPopularPostListDTO(List<Post> postList) {
