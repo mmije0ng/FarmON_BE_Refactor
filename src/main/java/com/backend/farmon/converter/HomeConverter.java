@@ -6,6 +6,7 @@ import com.backend.farmon.domain.PostImg;
 import com.backend.farmon.domain.User;
 import com.backend.farmon.dto.home.HomePostRow;
 import com.backend.farmon.dto.home.HomeResponse;
+import com.backend.farmon.dto.home.PopularExpertPostRow;
 
 import java.util.List;
 import java.util.Optional;
@@ -27,9 +28,9 @@ public class HomeConverter {
         return new HomeResponse.PostListDTO(list);
     }
 
-    public static HomeResponse.PopularPostListDTO toPopularPostListDTO(List<Post> postList) {
-        List<HomeResponse.PopularPostDetailDTO> popularPostDetailDTOList = postList.stream()
-                .map(HomeConverter::toPopularPostDetailListDTO)
+    public static HomeResponse.PopularPostListDTO toPopularPostListDTO(List<PopularExpertPostRow> rows) {
+        List<HomeResponse.PopularPostDetailDTO> popularPostDetailDTOList = rows.stream()
+                .map(HomeConverter::toPopularPostDetailDTOF)
                 .toList();
 
         return HomeResponse.PopularPostListDTO.builder()
@@ -37,23 +38,14 @@ public class HomeConverter {
                 .build();
     }
 
-    public static HomeResponse.PopularPostDetailDTO toPopularPostDetailListDTO(Post post) {
+    public static HomeResponse.PopularPostDetailDTO toPopularPostDetailDTOF(PopularExpertPostRow row) {
         return HomeResponse.PopularPostDetailDTO.builder()
-                .popularPostId(post.getId())
-                .popularPostTitle(post.getPostTitle())
-                .popularPostContent(post.getPostContent())
-                .writer(post.getUser().getUserName())
-                .profileImage(Optional.ofNullable(post.getUser())
-                        .map(User::getExpert)
-                        .map(Expert::getProfileImageUrl)
-                        .orElse(null))
-                .popularPostImage(
-                        Optional.ofNullable(post.getPostImgs())
-                                .filter(list -> !list.isEmpty()) // 리스트가 비어 있지 않은 경우만 처리
-                                .map(list -> list.get(0)) // 첫 번째 이미지 가져오기
-                                .map(PostImg::getStoredFileName) // 파일명 가져오기
-                                .orElse(null) // 없으면 null 반환
-                )
+                .popularPostId(row.getPostId())
+                .popularPostTitle(row.getTitle())
+                .popularPostContent(row.getContent())
+                .writer(row.getWriter())
+                .profileImage(row.getProfileImageUrl())
+                .popularPostImage(row.getFirstImageStoredFileName())
                 .build();
     }
 

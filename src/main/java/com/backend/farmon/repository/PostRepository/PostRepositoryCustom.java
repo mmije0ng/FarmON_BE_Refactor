@@ -2,6 +2,7 @@ package com.backend.farmon.repository.PostRepository;
 
 import com.backend.farmon.domain.Post;
 import com.backend.farmon.dto.home.HomePostRow;
+import com.backend.farmon.dto.home.PopularExpertPostRow;
 import com.backend.farmon.dto.post.PostType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -20,7 +21,7 @@ public interface PostRepositoryCustom {
     List<HomePostRow> findTopPostsByPostTypeWithCounts(PostType postType, int limit);
 
     // 인기 전문가 칼럼 6개 조회
-    List<Post> findTop6ExpertColumnPostsByPostId(List<Long> popularPostsIdList);
+    List<PopularExpertPostRow> findTopExpertColumnRowsByPopularIds(List<Long> popularPostsIdList, int limit);
 
     // 필터링없이 조회 
     Page<Post> findAllByBoardId(Long boardId, Pageable pageable);

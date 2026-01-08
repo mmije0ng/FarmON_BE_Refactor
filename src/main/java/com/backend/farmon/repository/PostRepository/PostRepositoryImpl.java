@@ -4,10 +4,12 @@ import com.backend.farmon.apiPayload.code.status.ErrorStatus;
 import com.backend.farmon.apiPayload.exception.GeneralException;
 import com.backend.farmon.domain.*;
 import com.backend.farmon.dto.home.HomePostRow;
+import com.backend.farmon.dto.home.PopularExpertPostRow;
 import com.backend.farmon.dto.post.PostType;
 import com.backend.farmon.repository.BoardRepository.BoardRepository;
 import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.types.Projections;
+import com.querydsl.core.types.dsl.CaseBuilder;
 import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
@@ -20,8 +22,6 @@ import org.springframework.stereotype.Repository;
 
 import java.util.*;
 
-import static com.backend.farmon.domain.QPostImg.postImg;
-
 @Slf4j
 @Repository
 @RequiredArgsConstructor
@@ -33,8 +33,10 @@ public class PostRepositoryImpl implements PostRepositoryCustom {
     private final QBoard board = QBoard.board;
     private final QPost originalPost = new QPost("originalPost");
     private final QComment comment = QComment.comment;
-
     private final QCrop crop = QCrop.crop;
+    private final QUser user = QUser.user;
+    private final QExpert expert = QExpert.expert;
+    private final QPostImg postImg = QPostImg.postImg;
 
     /**
      * 공통 select (원본 게시글 기준) + 좋아요/댓글 count를 한 번에 가져오기 위한 프로젝션
@@ -142,33 +144,72 @@ public class PostRepositoryImpl implements PostRepositoryCustom {
 
     // 인기 전문가 칼럼 6개 조회
     @Override
-    public List<Post> findTop6ExpertColumnPostsByPostId(List<Long> popularPostsIdList) {
-        return queryFactory.select(post)
+    public List<PopularExpertPostRow> findTopExpertColumnRowsByPopularIds(List<Long> popularPostsIdList, int limit) {
+        QPostImg pi2 = new QPostImg("pi2");
+
+        boolean hasPinned = popularPostsIdList != null && !popularPostsIdList.isEmpty();
+
+        var query = queryFactory
+                .select(Projections.constructor(
+                        PopularExpertPostRow.class,
+                        post.id,
+                        post.postTitle,
+                        post.postContent,
+                        user.userName,
+                        expert.profileImageUrl,
+                        postImg.storedFileName
+                ))
                 .from(post)
-                .join(post.board, board).fetchJoin()
-                .leftJoin(post.postlikes, likeCount)
-                .where(
-                        board.postType.eq(PostType.EXPERT_COLUMN) // 전문가 칼럼 조건
-                                .and(
-                                        popularPostsIdList != null && !popularPostsIdList.isEmpty()
-                                                ? post.id.in(popularPostsIdList).or(post.id.notIn(popularPostsIdList))
-                                                : null
-                                )
-                )
-                .groupBy(post)
-                .orderBy(
-                        // 인기 게시글 우선 정렬
-                        popularPostsIdList != null && !popularPostsIdList.isEmpty()
-                                ? Expressions.stringTemplate("CASE WHEN {0} IN ({1}) THEN 1 ELSE 2 END", post.id, Expressions.constant(popularPostsIdList)).asc()
-                                : null,
-                        // popularPostsIdList 내부 정렬
-                        popularPostsIdList != null && !popularPostsIdList.isEmpty()
-                                ? Expressions.stringTemplate("FIELD({0}, {1})", post.id, Expressions.constant(popularPostsIdList)).asc()
-                                : null,
-                        likeCount.count().desc(), // 좋아요 개수 내림차순
-                        post.createdAt.desc() // 작성일 내림차순
-                )
-                .limit(6) // 6개 제한
+                .join(post.board, board)
+                .join(post.user, user)
+                .leftJoin(user.expert, expert)
+                .leftJoin(likeCount).on(likeCount.post.id.eq(post.id))
+                // 첫 이미지 1개만 LEFT JOIN
+                .leftJoin(postImg).on(postImg.id.eq(
+                        JPAExpressions.select(pi2.id.min())
+                                .from(pi2)
+                                .where(pi2.post.id.eq(post.id))
+                ))
+                .where(board.postType.eq(PostType.EXPERT_COLUMN))
+                .groupBy(
+                        post.id,
+                        post.postTitle,
+                        post.postContent,
+                        user.userName,
+                        expert.profileImageUrl,
+                        postImg.storedFileName
+                );
+
+        // QueryDSL orderBy에 null 전달 방지 + pinned 조건부 생성
+        if (hasPinned) {
+            // pinned 우선 정렬(1) / 나머지(2)
+            var pinnedFirstOrderExpr = new CaseBuilder()
+                    .when(post.id.in(popularPostsIdList)).then(1)
+                    .otherwise(2);
+
+            // pinned 내부 순서 유지 (MySQL: FIELD)
+            var pinnedInnerOrderExpr = Expressions.numberTemplate(
+                    Integer.class,
+                    "FIELD({0}, {1})",
+                    post.id,
+                    Expressions.constant(popularPostsIdList)
+            );
+
+            query.orderBy(
+                    pinnedFirstOrderExpr.asc(),
+                    pinnedInnerOrderExpr.asc(),
+                    likeCount.id.countDistinct().desc(),
+                    post.createdAt.desc()
+            );
+        } else {
+            query.orderBy(
+                    likeCount.id.countDistinct().desc(),
+                    post.createdAt.desc()
+            );
+        }
+
+        return query
+                .limit(limit)
                 .fetch();
     }
 

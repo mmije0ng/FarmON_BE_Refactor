@@ -4,13 +4,13 @@ import com.backend.farmon.apiPayload.code.status.ErrorStatus;
 import com.backend.farmon.apiPayload.exception.GeneralException;
 import com.backend.farmon.config.security.UserAuthorizationUtil;
 import com.backend.farmon.converter.HomeConverter;
-import com.backend.farmon.converter.PostConverter;
 import com.backend.farmon.domain.*;
 import com.backend.farmon.domain.commons.TimeDifferenceUtil;
 import com.backend.farmon.dto.Answer.AnswerResponseDTO;
 import com.backend.farmon.dto.Comment.CommentResponseDTO;
 import com.backend.farmon.dto.home.HomePostRow;
 import com.backend.farmon.dto.home.HomeResponse;
+import com.backend.farmon.dto.home.PopularExpertPostRow;
 import com.backend.farmon.dto.post.PostPagingResponseDTO;
 import com.backend.farmon.dto.post.PostResponseDTO;
 import com.backend.farmon.dto.post.PostType;
@@ -42,6 +42,8 @@ public class PostQueryServiceImpl implements PostQueryService {
     private final BoardRepository boardRepository;
     private final S3Service s3Service;
     private static final Integer POST_LIMIT=3;
+    private static final Integer POPULAR_EXPERT_POST_LIMIT=6;
+    private static final long EXPERT_COLUMN_POST_ID = 4L;
 
     // 홈 화면 카테고리에 따른 커뮤니티 게시글 3개씩 조회
     // 인기, 전체, QNA, 전문가 칼럼
@@ -59,21 +61,27 @@ public class PostQueryServiceImpl implements PostQueryService {
             default -> postRepository.findTopPostsByPostTypeWithCounts(category, POST_LIMIT);
         };
 
-        log.info("[findHomePostsByCategory] DB query executed. category={}", category);
+        if (log.isDebugEnabled())
+            log.debug("홈 화면 커뮤니티 게시글 조회 DB query executed. category={}", category);
 
         return HomeConverter.toPostListDTO(rows);
     }
 
     // 인기 전문가 칼럼 6개 조회
     @Override
+    @Cacheable(
+            cacheNames = "home:popularExpertColumn",
+            key = "'list:v1'",              // 고정 키(파라미터 없으니)
+            unless = "#result == null"
+    )
     public HomeResponse.PopularPostListDTO findPopularExpertColumnPosts() {
-        // 별도로 인기 칼럼으로 지정할 지정할 전문가 칼럼 게시글 아이디 리스트
-        List<Long> popularPostsIdList = new ArrayList<>();
-        popularPostsIdList.add(4L);
+        List<Long> popularPostsIdList = List.of(EXPERT_COLUMN_POST_ID);
 
-        // 인기 전문가 칼럼 6개 조회
-        List<Post> expertColumnPostList = postRepository.findTop6ExpertColumnPostsByPostId(popularPostsIdList);
-        log.info("홈 화면 인기 전문가 칼럼 조회 성공");
+        List<PopularExpertPostRow> expertColumnPostList =
+                postRepository.findTopExpertColumnRowsByPopularIds(popularPostsIdList, POPULAR_EXPERT_POST_LIMIT);
+
+        if (log.isDebugEnabled())
+            log.debug("홈 화면 인기 전문가 칼럼 조회 DB query executed");
 
         return HomeConverter.toPopularPostListDTO(expertColumnPostList);
     }
